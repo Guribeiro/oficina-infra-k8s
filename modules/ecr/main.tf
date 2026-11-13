@@ -16,7 +16,7 @@ resource "aws_ecr_lifecycle_policy" "this" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Mantém as ${var.max_images} imagens mais recentes"
+      description  = "Mantem as ${var.max_images} imagens mais recentes"
       selection = {
         tagStatus   = "any"
         countType   = "imageCountMoreThan"

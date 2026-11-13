@@ -74,7 +74,7 @@ data "aws_lambda_function" "authorizer" {
 resource "aws_apigatewayv2_api" "this" {
   name          = "${local.api_prefix}-${var.environment}"
   protocol_type = "HTTP"
-  description   = "Oficina Mecânica (${var.environment}): autenticação por CPF (Lambda) e API NestJS no EKS"
+  description   = "Oficina Mecanica (${var.environment}): autenticacao por CPF (Lambda) e API NestJS no EKS"
 
   cors_configuration {
     allow_origins  = ["*"]
