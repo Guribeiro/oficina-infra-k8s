@@ -33,6 +33,7 @@ env:
 
 jobs:
   # Checagens estáticas: obrigatórias para merge (branch protection).
+  # Jobs que acessam a AWS só rodam quando a variável TF_STATE_BUCKET está configurada.
   validate:
     name: validate
     runs-on: ubuntu-latest
@@ -98,7 +99,7 @@ jobs:
   # Plataforma compartilhada (VPC, EKS, ECR, VPC Link): somente a partir da main.
   apply-platform:
     name: apply platform
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.TF_STATE_BUCKET != ''
     needs: validate
     runs-on: ubuntu-latest
     environment: producao
@@ -132,6 +133,7 @@ jobs:
     if: >-
       always() &&
       github.event_name == 'push' &&
+      vars.TF_STATE_BUCKET != '' &&
       needs.validate.result == 'success' &&
       (needs.apply-platform.result == 'success' || needs.apply-platform.result == 'skipped')
     needs: [validate, apply-platform]
