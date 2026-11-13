@@ -7,7 +7,7 @@ resource "aws_security_group" "vpc_link" {
   vpc_id      = var.vpc_id
 
   egress {
-    description = "Tráfego para o NLB interno da aplicação"
+    description = "Trafego para o NLB interno da aplicacao"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
