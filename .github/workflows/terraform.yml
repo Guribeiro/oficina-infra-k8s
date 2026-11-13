@@ -1,0 +1,211 @@
+name: Terraform
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: Stack
+        type: choice
+        options: [environment, platform]
+        required: true
+      environment:
+        description: Ambiente (stack environment)
+        type: choice
+        options: [hml, prd]
+        default: hml
+      action:
+        description: Ação
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+permissions:
+  contents: read
+
+env:
+  TERRAFORM_VERSION: 1.13.4
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+
+jobs:
+  # Checagens estáticas: obrigatórias para merge (branch protection).
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform validate
+        run: |
+          for stack in stacks/platform stacks/environment; do
+            echo "::group::$stack"
+            terraform -chdir="$stack" init -backend=false -input=false
+            terraform -chdir="$stack" validate
+            echo "::endgroup::"
+          done
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.59.1
+
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --recursive --format compact
+
+  # Plano dos dois níveis em PRs: develop -> hml, main -> prd.
+  plan:
+    name: plan (${{ github.base_ref == 'main' && 'prd' || 'hml' }})
+    if: github.event_name == 'pull_request' && vars.TF_STATE_BUCKET != ''
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: ${{ github.base_ref == 'main' && 'producao' || 'homologacao' }}
+    env:
+      TARGET_ENV: ${{ github.base_ref == 'main' && 'prd' || 'hml' }}
+      TF_VAR_newrelic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Plan platform
+        run: ./scripts/tf.sh platform plan
+
+      - name: Plan environment
+        run: ./scripts/tf.sh environment "$TARGET_ENV" plan
+
+  # Plataforma compartilhada (VPC, EKS, ECR, VPC Link): somente a partir da main.
+  apply-platform:
+    name: apply platform
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: producao
+    concurrency:
+      group: terraform-platform
+      cancel-in-progress: false
+    env:
+      AUTO_APPROVE: "true"
+      TF_VAR_newrelic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Apply platform
+        run: ./scripts/tf.sh platform apply
+
+  # Recursos por ambiente: develop -> hml, main -> prd (após a plataforma).
+  apply-environment:
+    name: apply environment (${{ github.ref == 'refs/heads/main' && 'prd' || 'hml' }})
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      needs.validate.result == 'success' &&
+      (needs.apply-platform.result == 'success' || needs.apply-platform.result == 'skipped')
+    needs: [validate, apply-platform]
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'producao' || 'homologacao' }}
+    concurrency:
+      group: terraform-environment-${{ github.ref == 'refs/heads/main' && 'prd' || 'hml' }}
+      cancel-in-progress: false
+    env:
+      AUTO_APPROVE: "true"
+      TARGET_ENV: ${{ github.ref == 'refs/heads/main' && 'prd' || 'hml' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Apply environment
+        run: ./scripts/tf.sh environment "$TARGET_ENV" apply
+
+      - name: Resumo
+        run: |
+          {
+            echo "### Ambiente ${TARGET_ENV}"
+            echo '```'
+            ./scripts/tf.sh environment "$TARGET_ENV" output 2>/dev/null | sed -n '/=/p'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Execução manual: reaplicar após o primeiro deploy da app/Lambda ou destruir
+  # a infraestrutura entre sessões do Learner Lab (economia de budget).
+  manual:
+    name: ${{ inputs.action }} ${{ inputs.stack }}${{ inputs.stack == 'environment' && format(' ({0})', inputs.environment) || '' }}
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: ${{ (inputs.stack == 'platform' || inputs.environment == 'prd') && 'producao' || 'homologacao' }}
+    concurrency:
+      group: terraform-${{ inputs.stack }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    env:
+      AUTO_APPROVE: "true"
+      TF_VAR_newrelic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+
+      - name: Terraform ${{ inputs.action }}
+        env:
+          STACK: ${{ inputs.stack }}
+          TARGET_ENV: ${{ inputs.environment }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          if [[ "$STACK" == "platform" ]]; then
+            ./scripts/tf.sh platform "$ACTION"
+          else
+            ./scripts/tf.sh environment "$TARGET_ENV" "$ACTION"
+          fi
