@@ -16,6 +16,7 @@ Este repositório provisiona na AWS a rede, o cluster **Amazon EKS**, o registro
 - Terraform 1.13 (backend S3 com lock nativo)
 - AWS: VPC, NAT Gateway, EKS 1.33, ECR, API Gateway HTTP API, VPC Link, CloudWatch Logs
 - Helm: Metrics Server e New Relic `nri-bundle`
+- Provider `newrelic`: dashboards, alertas e monitor Synthetics por ambiente
 - GitHub Actions (fmt, validate, tflint, plan e apply por ambiente)
 
 ## Arquitetura
@@ -66,7 +67,7 @@ flowchart LR
 | Stack | State | Aplicada por | Conteúdo |
 | --- | --- | --- | --- |
 | `stacks/platform` | `oficina-infra-k8s/platform/terraform.tfstate` | push na `main` | VPC (2 AZs, 1 NAT), EKS + node group (t3.medium, 2–4 nós), add-ons, ECR, VPC Link |
-| `stacks/environment` | `oficina-infra-k8s/environment/<env>/terraform.tfstate` | push na `develop` (hml) e na `main` (prd) | HTTP API do ambiente, stage `$default` com throttling e access log, integração privada com o NLB da app, authorizer e rotas |
+| `stacks/environment` | `oficina-infra-k8s/environment/<env>/terraform.tfstate` | push na `develop` (hml) e na `main` (prd) | HTTP API do ambiente, stage `$default` com throttling e access log, integração privada com o NLB da app, authorizer, rotas e observabilidade no New Relic |
 
 A plataforma é compartilhada pelos dois ambientes (um único cluster com namespaces `oficina-hml` e `oficina-prd`) para caber no orçamento do AWS Learner Lab; por isso ela só é alterada a partir da `main`, após revisão.
 
@@ -92,11 +93,26 @@ A stack `environment` tolera a ordem de entrega dos outros repositórios: se o N
 5. `oficina-lambda-auth`: funções de autenticação e rota `/auth/cpf`.
 6. Stack `environment` novamente (ou `workflow_dispatch`): integração com o NLB e authorizer.
 
+## Observabilidade (New Relic)
+
+O módulo [`modules/observability`](modules/observability) cria, para cada ambiente, os recursos abaixo. Ele só é aplicado quando `newrelic_account_id` e `newrelic_api_key` estão definidos; sem eles, a stack funciona normalmente sem nada no New Relic.
+
+| Recurso | Conteúdo |
+| --- | --- |
+| Dashboard **Operacional** | Página *API*: throughput, taxa de erro, latência p50/p95/p99 geral e por rota, erros por classe, disponibilidade. Página *Kubernetes*: CPU e memória por pod, réplicas do HPA, CPU/memória dos nós, reinícios, estado dos pods. Página *Autenticação*: invocações, duração p95 e erros das Lambdas, duração do health check |
+| Dashboard **Negócio** | OS recebidas e entregues no dia, volume diário de OS, tempo médio em cada status (diagnóstico, execução, finalização), transições por hora, falhas de integração e erros das Lambdas |
+| Monitor Synthetics | Ping a cada 15 min em `<invoke_url>/api/health` (gateway → NLB → pods → banco), de `US_EAST_1` e `SA_EAST_1`; criado depois que a app está integrada ao gateway |
+| Política de alertas | Taxa de erro > 5%, p95 > 1 s, CPU de pod > 80% do limit, reinício de container, falha de integração, erro em rotas de OS/orçamentos, erro nas Lambdas, health check falhando |
+| Workflow de e-mail | Envia os incidentes da política para `alert_email` (opcional) |
+
+Fontes dos dados: agente APM da API (`appName` `oficina-app-<env>`, eventos `OrdemServicoStatusAlterada` e `IntegracaoFalhou`), `nri-bundle` da stack platform (amostras `K8s*`) e a layer do New Relic nas Lambdas (`AwsLambdaInvocation`). Os limites dos alertas são variáveis do módulo.
+
 ## Pré-requisitos
 
 - Conta AWS Learner Lab ativa (as roles `LabEksClusterRole` e `LabEksNodeRole` são reutilizadas, inclusive quando o lab as cria com prefixo/sufixo aleatório; nenhuma role IAM é criada)
 - Terraform >= 1.10, AWS CLI v2, kubectl
 - License key de ingestão do New Relic (opcional; sem ela a integração Kubernetes não é instalada)
+- Account ID e User API key (`NRAK-...`) do New Relic (opcionais; sem eles dashboards e alertas não são criados)
 
 ## Execução local
 
@@ -113,9 +129,10 @@ export TF_VAR_newrelic_license_key=<license-key>   # opcional
 ./scripts/tf.sh platform plan
 ./scripts/tf.sh platform apply
 
-# 3. Ambiente
+# 3. Ambiente (dashboards e alertas: opcional)
+export TF_VAR_newrelic_account_id=<account-id> TF_VAR_newrelic_api_key=<NRAK-...> TF_VAR_alert_email=<email>
 ./scripts/tf.sh environment hml apply
-./scripts/tf.sh environment hml output   # invoke_url do API Gateway
+./scripts/tf.sh environment hml output   # invoke_url do API Gateway e links dos dashboards
 
 # Acesso ao cluster
 aws eks update-kubeconfig --name oficina-eks --region us-east-1
@@ -145,6 +162,9 @@ GitHub Environments `homologacao` e `producao`, cada um com:
 | --- | --- | --- |
 | Secret | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Credenciais temporárias do Learner Lab (atualizar a cada sessão) |
 | Secret | `NEW_RELIC_LICENSE_KEY` | License key de ingestão do New Relic |
+| Secret | `NEW_RELIC_API_KEY` | User API key (`NRAK-...`) usada pelo provider Terraform para dashboards e alertas |
+| Variable | `NEW_RELIC_ACCOUNT_ID` | Account ID do New Relic |
+| Variable | `ALERT_EMAIL` | Opcional: destino das notificações de alerta |
 | Variable (repositório) | `TF_STATE_BUCKET` | Bucket criado pelo `bootstrap/state.sh` |
 | Variable (repositório) | `AWS_REGION` | Opcional, padrão `us-east-1` |
 
