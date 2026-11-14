@@ -14,12 +14,12 @@ variable "subnet_ids" {
 }
 
 variable "cluster_role_name" {
-  description = "Role IAM existente do control plane (Learner Lab)"
+  description = "Nome base da role IAM existente do control plane (Learner Lab); aceita prefixo/sufixo gerado pelo lab"
   type        = string
 }
 
 variable "node_role_name" {
-  description = "Role IAM existente dos nodes (Learner Lab)"
+  description = "Nome base da role IAM existente dos nodes (Learner Lab); aceita prefixo/sufixo gerado pelo lab"
   type        = string
 }
 

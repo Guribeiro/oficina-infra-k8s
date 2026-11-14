@@ -1,11 +1,35 @@
 # AWS Learner Lab não permite criar roles IAM: o cluster e os nodes usam as roles
-# pré-provisionadas pelo laboratório.
+# pré-provisionadas pelo laboratório. Dependendo da conta, o nome vem exato
+# (LabEksClusterRole) ou com prefixo/sufixo da stack CloudFormation do lab
+# (c2290...-LabEksClusterRole-nNA0ybf1ERea); a busca aceita os dois formatos.
+data "aws_iam_roles" "cluster" {
+  name_regex = "(^|-)${var.cluster_role_name}(-[A-Za-z0-9]+)?$"
+}
+
+data "aws_iam_roles" "node" {
+  name_regex = "(^|-)${var.node_role_name}(-[A-Za-z0-9]+)?$"
+}
+
 data "aws_iam_role" "cluster" {
-  name = var.cluster_role_name
+  name = one(data.aws_iam_roles.cluster.names)
+
+  lifecycle {
+    precondition {
+      condition     = length(data.aws_iam_roles.cluster.names) == 1
+      error_message = "Esperada exatamente uma role contendo ${var.cluster_role_name}; encontradas: ${jsonencode(data.aws_iam_roles.cluster.names)}."
+    }
+  }
 }
 
 data "aws_iam_role" "node" {
-  name = var.node_role_name
+  name = one(data.aws_iam_roles.node.names)
+
+  lifecycle {
+    precondition {
+      condition     = length(data.aws_iam_roles.node.names) == 1
+      error_message = "Esperada exatamente uma role contendo ${var.node_role_name}; encontradas: ${jsonencode(data.aws_iam_roles.node.names)}."
+    }
+  }
 }
 
 resource "aws_eks_cluster" "this" {

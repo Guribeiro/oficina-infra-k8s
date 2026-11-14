@@ -23,3 +23,11 @@ output "authorizer_ativo" {
   description = "Lambda Authorizer anexado às rotas protegidas (false até o deploy da Lambda)"
   value       = local.authorizer_disponivel
 }
+
+output "newrelic_dashboards" {
+  description = "Links dos dashboards do ambiente no New Relic (null sem credenciais)"
+  value = local.newrelic_ativo ? {
+    operacional = module.observability[0].dashboard_operacional_url
+    negocio     = module.observability[0].dashboard_negocio_url
+  } : null
+}

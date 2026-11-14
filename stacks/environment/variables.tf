@@ -48,3 +48,28 @@ variable "log_retention_days" {
   type        = number
   default     = 14
 }
+
+variable "newrelic_account_id" {
+  description = "Account ID do New Relic (TF_VAR_newrelic_account_id); vazio desativa dashboards e alertas"
+  type        = string
+  default     = ""
+}
+
+variable "newrelic_api_key" {
+  description = "User API key do New Relic, NRAK-... (TF_VAR_newrelic_api_key); vazio desativa dashboards e alertas"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "newrelic_region" {
+  description = "Região da conta New Relic (US ou EU)"
+  type        = string
+  default     = "US"
+}
+
+variable "alert_email" {
+  description = "E-mail que recebe os alertas do ambiente (TF_VAR_alert_email); vazio não envia notificações"
+  type        = string
+  default     = ""
+}

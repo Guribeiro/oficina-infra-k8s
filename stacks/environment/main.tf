@@ -24,6 +24,9 @@ locals {
 
   authorizer_disponivel = contains(data.aws_lambda_functions.all.function_names, local.authorizer_name)
 
+  # Só a presença da chave é usada em count/condições; o valor segue sensível.
+  newrelic_ativo = var.newrelic_account_id != "" && nonsensitive(var.newrelic_api_key != "")
+
   # Rotas que não exigem token (o NestJS também não as protege).
   rotas_publicas = toset([
     "POST /api/sessions/sign-in",
@@ -191,4 +194,27 @@ resource "aws_apigatewayv2_route" "protegida" {
   target             = "integrations/${aws_apigatewayv2_integration.app[0].id}"
   authorization_type = local.authorizer_disponivel ? "CUSTOM" : "NONE"
   authorizer_id      = local.authorizer_disponivel ? aws_apigatewayv2_authorizer.jwt[0].id : null
+}
+
+# ---------------------------------------------------------------------------
+# Observabilidade (New Relic): dashboards, Synthetics e alertas do ambiente
+# ---------------------------------------------------------------------------
+module "observability" {
+  source = "../../modules/observability"
+  count  = local.newrelic_ativo ? 1 : 0
+
+  environment  = var.environment
+  app_name     = "${var.project}-app-${var.environment}"
+  namespace    = "${var.project}-${var.environment}"
+  cluster_name = local.platform.cluster_name
+  lambda_function_names = [
+    "${var.project}-auth-cpf-${var.environment}",
+    local.authorizer_name,
+  ]
+
+  # O monitor só faz sentido quando a API já está integrada ao gateway.
+  health_check_enabled = local.app_disponivel
+  health_check_url     = "${trimsuffix(aws_apigatewayv2_stage.this.invoke_url, "/")}/api/health"
+  alert_email          = var.alert_email
+  project_prefix       = var.project
 }
