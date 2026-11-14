@@ -142,6 +142,8 @@ kubectl get nodes
 
 ## Ciclo de vida no Learner Lab (bringup e teardown)
 
+> Passo a passo completo para iniciar e encerrar uma sessão, incluindo a cópia das credenciais e o `bootstrap/github-secrets.sh`: [docs/learner-lab.md](docs/learner-lab.md).
+
 Encerrar a sessão do Learner Lab **só para as instâncias EC2** (os nodes). EKS, NAT Gateway, NLBs, RDS e API Gateway continuam ativos e consomem o orçamento (cerca de US$ 5 a 7 por dia com os dois ambientes). Ao fim de cada período de trabalho, destrua a infraestrutura e recrie na próxima sessão:
 
 ```bash
