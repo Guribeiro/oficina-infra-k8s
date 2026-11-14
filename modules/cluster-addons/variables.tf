@@ -25,5 +25,5 @@ variable "metrics_server_chart_version" {
 variable "nri_bundle_chart_version" {
   description = "Versão do chart nri-bundle"
   type        = string
-  default     = "5.0.140"
+  default     = "8.0.40"
 }
