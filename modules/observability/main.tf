@@ -10,12 +10,14 @@
 locals {
   titulo = "Oficina Mecanica (${var.environment})"
 
-  app      = "appName = '${var.app_name}'"
-  ns       = "namespaceName = '${var.namespace}' AND clusterName = '${var.cluster_name}'"
-  lambdas  = "(${join(" OR ", [for nome in var.lambda_function_names : "aws.lambda.arn LIKE '%:function:${nome}'"])})"
-  monitor  = "${var.project_prefix}-health-${var.environment}"
-  synth    = "monitorName = '${local.monitor}'"
-  com_ping = var.health_check_url != ""
+  app     = "appName = '${var.app_name}'"
+  ns      = "namespaceName = '${var.namespace}' AND clusterName = '${var.cluster_name}'"
+  lambdas = "(${join(" OR ", [for nome in var.lambda_function_names : "aws.lambda.arn LIKE '%:function:${nome}'"])})"
+  monitor = "${var.project_prefix}-health-${var.environment}"
+  synth   = "monitorName = '${local.monitor}'"
+  # count/for_each dependem de um booleano conhecido no plan: a URL só existe depois
+  # do apply quando a HTTP API do ambiente é criada na mesma execução.
+  com_ping = var.health_check_enabled
 
   # Rotas com regras de negócio (exclui health check e documentação).
   transacoes = "${local.app} AND transactionType = 'Web' AND name NOT LIKE '%health%' AND name NOT LIKE '%docs%'"
