@@ -213,7 +213,8 @@ module "observability" {
   ]
 
   # O monitor só faz sentido quando a API já está integrada ao gateway.
-  health_check_url = local.app_disponivel ? "${trimsuffix(aws_apigatewayv2_stage.this.invoke_url, "/")}/api/health" : ""
-  alert_email      = var.alert_email
-  project_prefix   = var.project
+  health_check_enabled = local.app_disponivel
+  health_check_url     = "${trimsuffix(aws_apigatewayv2_stage.this.invoke_url, "/")}/api/health"
+  alert_email          = var.alert_email
+  project_prefix       = var.project
 }

@@ -23,8 +23,14 @@ variable "lambda_function_names" {
   type        = list(string)
 }
 
+variable "health_check_enabled" {
+  description = "Cria o monitor Synthetics e o alerta de disponibilidade (precisa ser conhecido no plan)"
+  type        = bool
+  default     = false
+}
+
 variable "health_check_url" {
-  description = "URL pública do health check (via API Gateway); vazio não cria o monitor Synthetics"
+  description = "URL pública do health check (via API Gateway); usada quando health_check_enabled = true"
   type        = string
   default     = ""
 }
