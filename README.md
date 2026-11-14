@@ -85,6 +85,7 @@ O gateway encaminha o `requestId` como cabeçalho `x-request-id`, que a API grav
 A stack `environment` tolera a ordem de entrega dos outros repositórios: se o NLB da aplicação ou a função authorizer ainda não existirem, os recursos dependentes não são criados e o apply conclui normalmente. Basta reaplicar depois.
 
 1. `bootstrap/state.sh`: bucket do Terraform state (uma vez por conta).
+   Em seguida, `SET_STATE_BUCKET=true bootstrap/github-secrets.sh` cria os GitHub Environments dos 4 repositórios, copia para eles as credenciais do Learner Lab e grava `TF_STATE_BUCKET`. A cada nova sessão do lab, rode o script de novo (sem `SET_STATE_BUCKET`).
 2. Stack `platform`: rede, EKS, ECR, VPC Link.
 3. `oficina-infra-db`: RDS e segredos.
 4. Deploy da aplicação (`tech-challenge`): cria o NLB interno de cada ambiente.
@@ -93,7 +94,7 @@ A stack `environment` tolera a ordem de entrega dos outros repositórios: se o N
 
 ## Pré-requisitos
 
-- Conta AWS Learner Lab ativa (as roles `LabEksClusterRole` e `LabEksNodeRole` são reutilizadas; nenhuma role IAM é criada)
+- Conta AWS Learner Lab ativa (as roles `LabEksClusterRole` e `LabEksNodeRole` são reutilizadas, inclusive quando o lab as cria com prefixo/sufixo aleatório; nenhuma role IAM é criada)
 - Terraform >= 1.10, AWS CLI v2, kubectl
 - License key de ingestão do New Relic (opcional; sem ela a integração Kubernetes não é instalada)
 
