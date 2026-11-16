@@ -73,6 +73,16 @@ credenciais param de funcionar e os pipelines do GitHub falham com erro de auten
 Clique em **Start Lab** de novo, repita os passos 2 a 4 e, se algum script estava rodando,
 execute-o de novo: `bringup.sh` e `teardown.sh` são idempotentes e continuam de onde pararam.
 
+### Se um script falhar
+
+Os dois scripts são idempotentes: corrija a causa e execute de novo. Falhas já vistas:
+
+| Mensagem | Causa | O que fazer |
+| --- | --- | --- |
+| `lookup ... no such host` / `request send failed` | Falha momentânea de DNS dentro do Docker | Rodar o script de novo |
+| `ResourceAlreadyExistsException` em um log group | Log group recriado pela AWS após um teardown antigo | `aws logs delete-log-group --log-group-name <nome>` e rodar de novo (o `teardown.sh` atual já remove esses órfãos) |
+| `Failed to save state` / arquivo `errored.tfstate` | O apply terminou, mas o state não foi gravado no S3 | Os scripts param até o state ser recuperado: no diretório do arquivo, com o backend do mesmo ambiente inicializado, `terraform state push errored.tfstate`, conferir com `terraform state list`, apagar o arquivo e rodar de novo |
+
 ## Encerrar a sessão
 
 1. **Destruir o ambiente** (cerca de 20 a 30 minutos), ainda com a sessão ativa:

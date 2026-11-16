@@ -25,6 +25,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/ciclo-comum.sh"
 validar_ambientes
 checar_repositorios
 checar_sessao_aws
+checar_states_pendentes
 carregar_newrelic
 preparar_ferramentas
 export AUTO_APPROVE=true
