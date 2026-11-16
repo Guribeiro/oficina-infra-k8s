@@ -207,7 +207,15 @@ GitHub Environments `homologacao` e `producao`, cada um com:
 | platform | `cluster_name`, `ecr_repository_url` | tech-challenge (deploy) |
 | environment | `api_id`, `api_execution_arn`, `invoke_url` | oficina-lambda-auth |
 
-## Links
+## Deploys ativos e links
 
-- Swagger da API (por ambiente): `<invoke_url>/docs`
-- Aplicação e documentação arquitetural: [Guribeiro/tech-challenge](https://github.com/Guribeiro/tech-challenge)
+| Ambiente | API Gateway | Swagger | Autenticação por CPF |
+| --- | --- | --- | --- |
+| Homologação (`develop`) | https://0bagr12oql.execute-api.us-east-1.amazonaws.com | [/docs](https://0bagr12oql.execute-api.us-east-1.amazonaws.com/docs) | `POST https://0bagr12oql.execute-api.us-east-1.amazonaws.com/auth/cpf` |
+| Produção (`main`) | https://cvqm7rpmdg.execute-api.us-east-1.amazonaws.com | [/docs](https://cvqm7rpmdg.execute-api.us-east-1.amazonaws.com/docs) | `POST https://cvqm7rpmdg.execute-api.us-east-1.amazonaws.com/auth/cpf` |
+
+URLs da sessão de 16/11/2026. O ambiente roda no AWS Learner Lab e é destruído e recriado entre sessões (`scripts/bringup.sh` do [oficina-infra-k8s](https://github.com/Guribeiro/oficina-infra-k8s)), o que gera novas URLs.
+
+- Coleção Postman (autenticação por CPF, authorizer e APIs protegidas): [oficina-fase3.postman_collection.json](https://github.com/Guribeiro/tech-challenge/blob/main/docs/postman/oficina-fase3.postman_collection.json)
+- Documentação arquitetural (componentes, sequências, RFCs, ADRs, modelo de dados): [tech-challenge/docs](https://github.com/Guribeiro/tech-challenge/tree/main/docs)
+- Passo a passo de uma sessão no Learner Lab: [docs/learner-lab.md](docs/learner-lab.md)
