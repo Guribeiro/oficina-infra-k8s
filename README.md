@@ -139,7 +139,38 @@ aws eks update-kubeconfig --name oficina-eks --region us-east-1
 kubectl get nodes
 ```
 
-Para evitar consumo do orçamento do laboratório entre as sessões de trabalho, destrua na ordem inversa: `./scripts/tf.sh environment <env> destroy` e depois `./scripts/tf.sh platform destroy` (ou pelo `workflow_dispatch`).
+
+## Ciclo de vida no Learner Lab (bringup e teardown)
+
+> Passo a passo completo para iniciar e encerrar uma sessão, incluindo a cópia das credenciais e o `bootstrap/github-secrets.sh`: [docs/learner-lab.md](docs/learner-lab.md).
+
+Encerrar a sessão do Learner Lab **só para as instâncias EC2** (os nodes). EKS, NAT Gateway, NLBs, RDS e API Gateway continuam ativos e consomem o orçamento (cerca de US$ 5 a 7 por dia com os dois ambientes). Ao fim de cada período de trabalho, destrua a infraestrutura e recrie na próxima sessão:
+
+```bash
+# Fim da sessão: destrói hml, prd e a plataforma (pede confirmação digitando "destruir")
+./scripts/teardown.sh
+
+# Nova sessão: atualizar ~/.aws/credentials [learnerlab] com as credenciais do lab e então
+./scripts/bringup.sh                 # ~40 min: plataforma + hml + prd + smoke test
+./bootstrap/github-secrets.sh        # credenciais novas nos GitHub Environments
+```
+
+Os scripts orquestram os 4 repositórios, que precisam estar clonados lado a lado (`oficina-infra-k8s`, `oficina-infra-db`, `oficina-lambda-auth`, `tech-challenge`), e reaproveitam o `scripts/tf.sh` de cada um e o `scripts/deploy.sh` da aplicação. As credenciais do New Relic são lidas de `~/.newrelic.env` (opcional). Sem Terraform, jq, Node.js ou kubectl instalados, os passos rodam na imagem `tools/Dockerfile` (é preciso Docker, que também faz o build da imagem da aplicação).
+
+| Script | Ordem |
+| --- | --- |
+| `teardown.sh` | por ambiente: Lambdas → environment → namespace `oficina-<env>` (remove o NLB criado pelo Kubernetes, que impediria apagar a VPC) → banco; por fim `platform` |
+| `bringup.sh` | `platform` → imagem no ECR → por ambiente: banco → deploy da app (migrations e seed) → environment → Lambdas → environment (authorizer) → smoke test |
+
+| Variável | Efeito |
+| --- | --- |
+| `ENVS=hml` / `ENVS=prd` | atua em um ambiente; no teardown a plataforma é mantida |
+| `KEEP_PLATFORM=1` | teardown sem destruir a plataforma |
+| `SEED=false` | bringup sem popular os bancos (padrão `true`) |
+| `YES=1` | teardown sem confirmação interativa |
+| `AWS_PROFILE` | perfil da sessão do lab (padrão `learnerlab`) |
+
+Os dois scripts são idempotentes: se algo falhar no meio (ex.: credenciais expiradas), corrija e rode de novo. O bucket do Terraform state e as configurações do GitHub são mantidos. Os dados dos bancos não têm snapshot e são recriados pelo seed.
 
 ## CI/CD
 
@@ -176,7 +207,15 @@ GitHub Environments `homologacao` e `producao`, cada um com:
 | platform | `cluster_name`, `ecr_repository_url` | tech-challenge (deploy) |
 | environment | `api_id`, `api_execution_arn`, `invoke_url` | oficina-lambda-auth |
 
-## Links
+## Deploys ativos e links
 
-- Swagger da API (por ambiente): `<invoke_url>/docs`
-- Aplicação e documentação arquitetural: [Guribeiro/tech-challenge](https://github.com/Guribeiro/tech-challenge)
+| Ambiente | API Gateway | Swagger | Autenticação por CPF |
+| --- | --- | --- | --- |
+| Homologação (`develop`) | https://0bagr12oql.execute-api.us-east-1.amazonaws.com | [/docs](https://0bagr12oql.execute-api.us-east-1.amazonaws.com/docs) | `POST https://0bagr12oql.execute-api.us-east-1.amazonaws.com/auth/cpf` |
+| Produção (`main`) | https://cvqm7rpmdg.execute-api.us-east-1.amazonaws.com | [/docs](https://cvqm7rpmdg.execute-api.us-east-1.amazonaws.com/docs) | `POST https://cvqm7rpmdg.execute-api.us-east-1.amazonaws.com/auth/cpf` |
+
+URLs da sessão de 16/11/2026. O ambiente roda no AWS Learner Lab e é destruído e recriado entre sessões (`scripts/bringup.sh` do [oficina-infra-k8s](https://github.com/Guribeiro/oficina-infra-k8s)), o que gera novas URLs.
+
+- Coleção Postman (autenticação por CPF, authorizer e APIs protegidas): [oficina-fase3.postman_collection.json](https://github.com/Guribeiro/tech-challenge/blob/main/docs/postman/oficina-fase3.postman_collection.json)
+- Documentação arquitetural (componentes, sequências, RFCs, ADRs, modelo de dados): [tech-challenge/docs](https://github.com/Guribeiro/tech-challenge/tree/main/docs)
+- Passo a passo de uma sessão no Learner Lab: [docs/learner-lab.md](docs/learner-lab.md)
