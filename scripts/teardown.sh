@@ -24,6 +24,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/ciclo-comum.sh"
 validar_ambientes
 checar_repositorios
 checar_sessao_aws
+checar_states_pendentes
 
 DESTRUIR_PLATAFORMA=0
 if [[ "${KEEP_PLATFORM:-0}" != "1" && " $ENVS " == *" hml "* && " $ENVS " == *" prd "* ]]; then
@@ -55,6 +56,10 @@ for env in $ENVS; do
 
   etapa "[$env] environment (API Gateway e observabilidade)"
   tf_infra_k8s environment "$env" destroy
+
+  sleep 15
+  remover_log_groups_orfaos "/aws/lambda/oficina-auth-cpf-$env" "/aws/lambda/oficina-authorizer-$env" \
+    "/aws/apigateway/oficina-api-$env"
 
   etapa "[$env] namespace oficina-$env e NLB da aplicação"
   if cluster_existe; then

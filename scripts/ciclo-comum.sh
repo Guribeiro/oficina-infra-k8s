@@ -122,6 +122,34 @@ tf_infra_k8s() { em_repo "$INFRA_K8S_DIR" ./scripts/tf.sh "$@"; }
 tf_db() { em_repo "$INFRA_DB_DIR" ./scripts/tf.sh "$@"; }
 tf_lambda() { em_repo "$LAMBDA_DIR" ./scripts/tf.sh "$@"; }
 
+# Um "Failed to save state" (ex.: falha de rede ao gravar no S3) deixa o state novo em
+# errored.tfstate. Aplicar de novo com o state remoto desatualizado tentaria recriar
+# recursos que já existem, então o ciclo para até o state ser enviado ao S3.
+checar_states_pendentes() {
+  local pendentes
+  pendentes="$(find "$INFRA_K8S_DIR" "$INFRA_DB_DIR" "$LAMBDA_DIR" -name errored.tfstate \
+    -not -path '*/node_modules/*' 2>/dev/null || true)"
+  [[ -z "$pendentes" ]] && return
+  printf '%s\n' "$pendentes" >&2
+  erro "State não salvo de uma execução anterior. No diretório de cada arquivo acima, com o
+  backend inicializado para o mesmo ambiente (./scripts/tf.sh <stack> [env] output), rode
+  'terraform state push errored.tfstate', confira com 'terraform state list', apague o
+  arquivo e execute o script de novo."
+}
+
+# Log groups que a AWS recria quando uma função ou o gateway ainda grava logs logo após o
+# destroy. Sobrando, eles fazem o próximo apply falhar com ResourceAlreadyExistsException.
+remover_log_groups_orfaos() {
+  local grupo
+  for grupo in "$@"; do
+    if aws logs describe-log-groups --log-group-name-prefix "$grupo" \
+      --query "logGroups[?logGroupName=='$grupo'].logGroupName" --output text | grep -q .; then
+      aws logs delete-log-group --log-group-name "$grupo"
+      echo "Log group órfão removido: $grupo"
+    fi
+  done
+}
+
 cluster_existe() {
   aws eks describe-cluster --name "$EKS_CLUSTER" --query cluster.status --output text >/dev/null 2>&1
 }
